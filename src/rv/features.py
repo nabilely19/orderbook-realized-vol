@@ -4,17 +4,22 @@ import pandas as pd
 
 def wap(book: pd.DataFrame, level: int = 1) -> pd.Series:
     """Weighted average price at a given book level (bid price weighted by ask size, and vice versa)."""
-    raise NotImplementedError
+    bid_p, ask_p = book[f"bid_price{level}"], book[f"ask_price{level}"]
+    bid_s, ask_s = book[f"bid_size{level}"], book[f"ask_size{level}"]
+    return (bid_p * ask_s + ask_p * bid_s) / (bid_s + ask_s)
 
 
 def log_return(price: pd.Series) -> pd.Series:
-    """Log return between consecutive updates. Must not cross time_id boundaries."""
-    raise NotImplementedError
+    """Log return between consecutive updates. Must not cross time_id boundaries.
+
+    Call per time_id, e.g. ``book.groupby("time_id")["wap"].transform(log_return)``.
+    The first update of each window has no predecessor and returns NaN."""
+    return np.log(price).diff()
 
 
 def realized_volatility(returns: pd.Series) -> float:
-    """sqrt(sum r^2)."""
-    raise NotImplementedError
+    """sqrt(sum r^2). NaNs (first update of a window) are ignored."""
+    return float(np.sqrt(np.nansum(np.square(returns))))
 
 
 def book_features(book: pd.DataFrame) -> pd.DataFrame:

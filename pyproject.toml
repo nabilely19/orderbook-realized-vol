@@ -5,7 +5,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "pandas", "pyarrow", "lightgbm", "statsmodels", "scikit-learn", "matplotlib"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ipykernel"]
 
 [build-system]
 requires = ["setuptools>=68"]

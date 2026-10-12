@@ -3,8 +3,8 @@ import pandas as pd
 
 
 def naive(features: pd.DataFrame) -> np.ndarray:
-    """Predict next-window RV as the current-window RV."""
-    raise NotImplementedError
+    """Predict next-window RV as the current-window RV (column ``rv``)."""
+    return features["rv"].to_numpy()
 
 
 def har_rv(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:

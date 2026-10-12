@@ -37,8 +37,14 @@ Gap 1 -> 2 = optimism from random CV. Gap 2 -> 3 = share of edge that is not tra
 **Recovering time order.** Prices are normalised to ~1 in each window, but the tick is $0.01, so the smallest gap
 between distinct normalised prices gives the real price: `0.01 / min_gap`. Windows close in time have similar
 real prices across all 112 stocks; a 1-D t-SNE of the standardised log-price cross-section orders them along the
-time axis. Direction is set so that each window's target (RV of the *next* 10 min) is closer to the following
-window's RV than to the preceding one's.
+time axis. Direction: each window's target (RV of the *next* 10 min) should be closer to the following window's
+RV than to the preceding one's. Each candidate direction is scored on its own first sixth of the timeline, which
+walk-forward only ever uses for training, so the choice reads no test-fold targets. (Diagnostic, reading all
+targets: 5 of 6 blocks agree with the chosen direction.)
+
+*Scope of the reconstruction.* The price standardisation and the t-SNE use every window, test windows included,
+and so does the standardisation inside the neighbour features. They read prices only, never targets: this builds
+the evaluation timeline, which a live system would have from its own clock.
 
 ![Price level before and after reconstruction](reports/time_order.png)
 
@@ -69,13 +75,40 @@ reconstructed timeline. Models without neighbour features are identical in the l
 
 ![Results](reports/results.png)
 
+**Fold by fold** (walk-forward, legal features; fold 1 trains on the first sixth of the timeline, fold 5 on
+five sixths). From `reports/folds.csv`:
+
+| Fold | Naive | HAR-RV | Kalman | LightGBM | LightGBM + legal neighbours |
+|---|---|---|---|---|---|
+| 1 | 0.368 | 0.353 | **0.307** | 0.401 | 0.426 |
+| 2 | 0.343 | 0.261 | 0.298 | 0.242 | **0.235** |
+| 3 | 0.341 | 0.279 | 0.300 | 0.236 | **0.231** |
+| 4 | 0.340 | 0.263 | 0.291 | 0.233 | **0.228** |
+| 5 | 0.331 | 0.253 | 0.310 | 0.227 | **0.220** |
+
+**Is the gap real?** Block bootstrap over time (`rv.stats`): tested windows in reconstructed order are cut into
+blocks of consecutive windows (all stocks together, since errors are correlated across stocks and across
+nearby windows) and blocks are resampled 2000 times. Positive difference = first model better.
+From `reports/significance.csv`:
+
+| Comparison | Scheme | RMSPE gain | 95% CI, 20-window blocks | 95% CI, 100-window blocks |
+|---|---|---|---|---|
+| HAR-RV vs naive | legal | 0.061 | [0.052, 0.069] | [0.047, 0.074] |
+| LightGBM vs HAR-RV | legal | 0.008 | [0.000, 0.017] | [-0.006, 0.023] |
+| + neighbours (see the future) | walk-forward | 0.032 | [0.026, 0.038] | [0.020, 0.044] |
+| + neighbours (past only) | legal | -0.003 | [-0.007, 0.000] | [-0.009, 0.003] |
+
 **Findings**
 - Random CV flatters every learned model: LightGBM goes from 0.214 to 0.244 once it is tested on the future.
-- Neighbour features are worth 0.032 RMSPE under walk-forward (0.276 -> 0.244), but only because they see the
-  future. Restricted to the past they add nothing (0.279 vs 0.276).
-- The best production-legal model is LightGBM without neighbours at 0.276: 20% better than naive, 3% better
-  than a three-coefficient HAR regression. The headline 0.214 looks 0.070 better than HAR under walk-forward
-  (0.284); only 0.008 of that survives with legal features and honest validation.
+- Neighbour features are worth 0.032 RMSPE under walk-forward (0.276 -> 0.244, 95% CI [0.020, 0.044]), but only
+  because they see the future. Restricted to the past they add nothing (-0.003, CI [-0.009, 0.003]).
+- Pooled over all folds, the best legal model (LightGBM, 0.276) is 20% better than naive but only 3% better than
+  a three-coefficient HAR regression, and that 0.008 gap is not robust: its confidence interval includes zero
+  with 100-window blocks. The headline 0.214 looks 0.070 better than HAR; at most 0.008 of that survives.
+- The pooled figure hides a learning curve. With one sixth of the timeline as training data (fold 1), both
+  LightGBM models are worse than naive (0.401 vs 0.368) and the Kalman filter is best. With two sixths or more
+  (folds 2-5), LightGBM beats HAR in every fold, by 7% to 15%. The gain over HAR is real only once there is
+  enough history; how much is enough was not pinned down beyond these five folds.
 
 ## What did not work
 - **LightGBM on the RV level.** Trained on the target itself with weight 1/y^2, LightGBM scored 0.310 under
@@ -85,15 +118,16 @@ reconstructed timeline. Models without neighbour features are identical in the l
   minutes inside the current window. The filter only sees each window's total RV, and the reconstructed sequence
   is noisy, so its smoothed level lags the current regime.
 - **Order reconstruction is imperfect.** The recovered timeline is smooth for most stocks, but some blocks are
-  misplaced (stock 3, positions ~500-1200 in `reports/time_order.png`), and the direction check is a small
-  margin (0.323 vs 0.345). Walk-forward folds are therefore only approximately chronological.
+  misplaced (stock 3, positions ~500-1200 in `reports/time_order.png`), and the direction signal is weak
+  (one block of six disagrees). Walk-forward folds are therefore only approximately chronological.
 
 ## Layout
 ```
-src/rv/        features, metrics, baselines (models), cv, data (loading + cache), experiment (model x scheme grid)
+src/rv/        features, metrics, baselines (models), cv, data (loading + cache), experiment (model x scheme grid),
+               stats (fold table, block bootstrap)
 scripts/       run_cv.py entry point
 notebooks/     01: RV vs target on stock 0; 02: full pipeline with plots. No logic.
-reports/       figures, results.csv, submission.csv
+reports/       figures, results.csv, folds.csv, significance.csv, submission.csv
 tests/         unit tests on metrics, features and cv
 ```
 

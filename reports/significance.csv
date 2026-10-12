@@ -1,0 +1,9 @@
+model,vs,scheme,block_size,diff,ci_low,ci_high,p_a_not_better,n_blocks
+lightgbm_no_neighbours,har_rv,walk_forward_legal,20,0.0079,0.0002,0.0166,0.024,160
+lightgbm_no_neighbours,har_rv,walk_forward_legal,100,0.0079,-0.0063,0.023,0.1395,32
+har_rv,naive,walk_forward_legal,20,0.0611,0.0523,0.0694,0.0,160
+har_rv,naive,walk_forward_legal,100,0.0611,0.0469,0.0737,0.0,32
+lightgbm,lightgbm_no_neighbours,walk_forward,20,0.0319,0.0261,0.0383,0.0,160
+lightgbm,lightgbm_no_neighbours,walk_forward,100,0.0319,0.0199,0.0441,0.0,32
+lightgbm,lightgbm_no_neighbours,walk_forward_legal,20,-0.0033,-0.0072,0.0004,0.9595,160
+lightgbm,lightgbm_no_neighbours,walk_forward_legal,100,-0.0033,-0.0093,0.0032,0.824,32

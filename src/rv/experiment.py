@@ -51,23 +51,26 @@ def folds(scheme: str, features: pd.DataFrame, order: np.ndarray):
     return walk_forward_folds(order, n_folds=5)
 
 
-def run(features: pd.DataFrame, order: np.ndarray, models=MODELS, schemes=SCHEMES, log=print) -> pd.DataFrame:
-    """RMSPE of every model under every scheme, pooled over the test rows of all folds.
+def predictions(features: pd.DataFrame, order: np.ndarray, models=MODELS, schemes=SCHEMES, log=print) -> dict:
+    """Out-of-fold predictions of every model under every scheme.
 
     random              random 5-fold over time_id, neighbour features from all time_ids
     walk_forward        train on the past, test on the future; neighbours still from all time_ids
-    walk_forward_legal  walk-forward, neighbours restricted to earlier time_ids (production-legal)"""
+    walk_forward_legal  walk-forward, neighbours restricted to earlier time_ids (production-legal)
+
+    Returns {scheme: DataFrame} with one row per tested (stock_id, time_id): fold, target, one column per model."""
     features = add_market_rv(features)
     nn = {
         "all": neighbour_features(features),
         "legal": neighbour_features(features, order),
     }
-    results = {}
+    out = {}
     for scheme in schemes:
         f = features.merge(nn["legal" if scheme == "walk_forward_legal" else "all"], on=["stock_id", "time_id"])
-        preds = {m: pd.Series(np.nan, index=f.index) for m in models}
+        parts = []
         for i, (train_ids, test_ids) in enumerate(folds(scheme, f, order)):
             train, test = f[f["time_id"].isin(train_ids)], f[f["time_id"].isin(test_ids)]
+            part = test[["stock_id", "time_id", "target"]].assign(fold=i)
             for m in models:
                 if m == "naive":
                     p = naive(test)
@@ -79,8 +82,20 @@ def run(features: pd.DataFrame, order: np.ndarray, models=MODELS, schemes=SCHEME
                     p = lightgbm(train, test, BOOK_TRADE_FEATURES)
                 elif m == "lightgbm":
                     p = lightgbm(train, test, BOOK_TRADE_FEATURES + NEIGHBOUR_FEATURES)
-                preds[m].loc[test.index] = p
+                part[m] = p
+            parts.append(part)
             log(f"{scheme}: fold {i + 1} done")
-        tested = preds[models[0]].notna()
-        results[scheme] = {m: rmspe(f.loc[tested, "target"].to_numpy(), preds[m][tested].to_numpy()) for m in models}
-    return pd.DataFrame(results).loc[models]
+        out[scheme] = pd.concat(parts, ignore_index=True)
+    return out
+
+
+def summarise(preds: dict, models=MODELS) -> pd.DataFrame:
+    """RMSPE of every model under every scheme, pooled over the test rows of all folds."""
+    return pd.DataFrame({
+        scheme: {m: rmspe(p["target"].to_numpy(), p[m].to_numpy()) for m in models} for scheme, p in preds.items()
+    }).loc[list(models)]
+
+
+def run(features: pd.DataFrame, order: np.ndarray, models=MODELS, schemes=SCHEMES, log=print) -> pd.DataFrame:
+    """RMSPE table: ``summarise(predictions(...))``."""
+    return summarise(predictions(features, order, models, schemes, log), models)

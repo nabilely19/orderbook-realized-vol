@@ -26,16 +26,30 @@ def reconstruct_time_order(prices: pd.DataFrame, seed: int = 0) -> np.ndarray:
     return prices.index.to_numpy()[np.argsort(embedding)]
 
 
-def orient(ordered_time_ids: np.ndarray, rv: pd.DataFrame, target: pd.DataFrame) -> np.ndarray:
-    """Flip the order if it runs backwards in time.
+def _forward_margin(ids: np.ndarray, rv: pd.DataFrame, target: pd.DataFrame) -> float:
+    """How much closer each window's target is to the next window's RV than to the previous one's
+    (mean absolute log ratio). Positive means the order runs forward."""
+    rv, target = rv.loc[ids].to_numpy(), target.loc[ids].to_numpy()
+    err_next = np.nanmean(np.abs(np.log(target[:-1] / rv[1:])))
+    err_prev = np.nanmean(np.abs(np.log(target[1:] / rv[:-1])))
+    return float(err_prev - err_next)
+
+
+def orient(ordered_time_ids: np.ndarray, rv: pd.DataFrame, target: pd.DataFrame, n_blocks: int = 6) -> np.ndarray:
+    """Flip the order if it runs backwards in time, reading training targets only.
 
     ``target`` is the RV of the 10 minutes right after each window, so it should track the RV of
     the following window more closely than the RV of the preceding one. ``rv`` and ``target``
-    have one row per time_id and one column per stock."""
-    rv, target = rv.loc[ordered_time_ids].to_numpy(), target.loc[ordered_time_ids].to_numpy()
-    err_next = np.nanmean(np.abs(np.log(target[:-1] / rv[1:])))
-    err_prev = np.nanmean(np.abs(np.log(target[1:] / rv[:-1])))
-    return ordered_time_ids if err_next <= err_prev else ordered_time_ids[::-1]
+    have one row per time_id and one column per stock.
+
+    Walk-forward never tests on the first of its ``n_blocks`` blocks. Each candidate timeline (as given,
+    and reversed) is scored on its own first block only, and the one with the larger forward margin wins.
+    Whichever is chosen, the decision read only targets that are training data in that timeline."""
+    ordered_time_ids = np.asarray(ordered_time_ids)
+    n = max(2, len(ordered_time_ids) // n_blocks)
+    reversed_ids = ordered_time_ids[::-1]
+    keep = _forward_margin(ordered_time_ids[:n], rv, target) >= _forward_margin(reversed_ids[:n], rv, target)
+    return ordered_time_ids if keep else reversed_ids
 
 
 def walk_forward_folds(ordered_time_ids: np.ndarray, n_folds: int = 5, gap: int = 0):

@@ -36,3 +36,20 @@ def test_orient_flips_backwards_order():
     target = pd.DataFrame({0: [2.0, 4.0, 8.0, 16.0]})     # target[t] == rv[t + 1]
     ids = np.array([3, 2, 1, 0])
     assert list(orient(ids, rv, target)) == [0, 1, 2, 3]
+
+
+def test_block_bootstrap_detects_a_clear_gap_and_not_a_null_one():
+    from rv.stats import block_bootstrap_diff
+    rng = np.random.default_rng(0)
+    n = 400
+    target = rng.uniform(1, 2, n)
+    preds = pd.DataFrame({
+        "time_id": np.arange(n), "target": target,
+        "good": target * (1 + rng.normal(0, 0.1, n)),
+        "bad": target * (1 + rng.normal(0, 0.3, n)),
+        "bad_twin": target * (1 + rng.normal(0, 0.3, n)),
+    })
+    clear = block_bootstrap_diff(preds, np.arange(n), "good", "bad", block_size=10)
+    assert clear["ci_low"] > 0
+    null = block_bootstrap_diff(preds, np.arange(n), "bad", "bad_twin", block_size=10)
+    assert null["ci_low"] < 0 < null["ci_high"]

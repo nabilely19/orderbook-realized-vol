@@ -42,9 +42,10 @@ def orient(ordered_time_ids: np.ndarray, rv: pd.DataFrame, target: pd.DataFrame,
     the following window more closely than the RV of the preceding one. ``rv`` and ``target``
     have one row per time_id and one column per stock.
 
-    Walk-forward never tests on the first of its ``n_blocks`` blocks. Each candidate timeline (as given,
-    and reversed) is scored on its own first block only, and the one with the larger forward margin wins.
-    Whichever is chosen, the decision read only targets that are training data in that timeline."""
+    Each candidate timeline (as given, and reversed) is scored on its own first of ``n_blocks`` blocks,
+    and the one with the larger forward margin wins. This reads targets at both ends of the timeline, so in
+    the chosen direction one test block informs the choice. No target-based rule avoids that: walk-forward
+    never tests only its first block, and reversing the timeline makes it the last. The leak is one bit."""
     ordered_time_ids = np.asarray(ordered_time_ids)
     n = max(2, len(ordered_time_ids) // n_blocks)
     reversed_ids = ordered_time_ids[::-1]

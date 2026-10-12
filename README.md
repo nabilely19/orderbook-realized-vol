@@ -38,9 +38,14 @@ Gap 1 -> 2 = optimism from random CV. Gap 2 -> 3 = share of edge that is not tra
 between distinct normalised prices gives the real price: `0.01 / min_gap`. Windows close in time have similar
 real prices across all 112 stocks; a 1-D t-SNE of the standardised log-price cross-section orders them along the
 time axis. Direction: each window's target (RV of the *next* 10 min) should be closer to the following window's
-RV than to the preceding one's. Each candidate direction is scored on its own first sixth of the timeline, which
-walk-forward only ever uses for training, so the choice reads no test-fold targets. (Diagnostic, reading all
-targets: 5 of 6 blocks agree with the chosen direction.)
+RV than to the preceding one's. Each candidate direction is scored on its own first sixth of the timeline, and the
+larger margin wins (diagnostic: 5 of 6 blocks agree with the chosen direction).
+
+*This choice reads one test block, and no rule can avoid it.* An expanding window never tests only its first
+block, and reversing the timeline turns that block into the last one, so no block of targets is training data
+under both directions. The direction is a single binary choice made from targets at both ends of the timeline;
+any direction choice that uses targets has this property. The leakage is bounded at one bit and cannot
+plausibly affect RMSPE.
 
 *Scope of the reconstruction.* The price standardisation and the t-SNE use every window, test windows included,
 and so does the standardisation inside the neighbour features. They read prices only, never targets: this builds
@@ -89,6 +94,12 @@ five sixths). From `reports/folds.csv`:
 **Is the gap real?** Block bootstrap over time (`rv.stats`): tested windows in reconstructed order are cut into
 blocks of consecutive windows (all stocks together, since errors are correlated across stocks and across
 nearby windows) and blocks are resampled 2000 times. Positive difference = first model better.
+
+Why blocks and not rows: the 112 stocks in a window react to the same market move, and volatility clusters
+across neighbouring windows. Resampling ~360k rows as if independent would give intervals far too narrow; whole
+blocks keep that correlation inside each resampled unit. Block length is the choice to justify: the 20- and
+100-window intervals disagree on the LightGBM vs HAR-RV gap, so the error correlation lasts longer than 20
+windows, and the wider interval is the one to trust.
 From `reports/significance.csv`:
 
 | Comparison | Scheme | RMSPE gain | 95% CI, 20-window blocks | 95% CI, 100-window blocks |
